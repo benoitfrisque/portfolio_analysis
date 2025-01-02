@@ -2,14 +2,13 @@ import pandas as pd
 import os
 import dash
 import dash_mantine_components as dmc
-from dash import html, dcc, _dash_renderer
+from dash import html, dcc, _dash_renderer, Input, Output
 import plotly.express as px
 
 BASEDIR = os.path.dirname(os.path.dirname(__file__))
 DATA_DIR = os.path.join(BASEDIR, "data", "raw")
 balance_file_path = os.path.join(DATA_DIR, "balance_sample.csv")
 accounts_file_path = os.path.join(DATA_DIR, "accounts_sample.csv")
-
 
 COLOR_PALETTE = ["#264653", "#2a9d8f", "#e9c46a", "#f4a261", "#e76f51"]
 BODY_FONT_FAMILY = "'Source Sans Pro', sans-serif"
@@ -81,38 +80,14 @@ fig_area.update_layout(
     ),
 )
 
-# Selected date for sunburst plot (to be changed to be interactive)
-selected_date = pd.to_datetime("10/09/2024", format='%d/%m/%Y')
-df_selected_date = df_resampled[df_resampled["date"] == selected_date].sort_values(['type', 'balance'])
-
-fig_pie = px.sunburst(
-    df_selected_date,
-    path=["type", "account"],
-    values="balance",
-    template="plotly_white",
-    color_discrete_sequence=COLOR_PALETTE,
-)
-
-fig_pie.update_traces(textinfo="label+percent root")
-
-fig_pie.update_layout(
-    plot_bgcolor="rgba(0, 0, 0, 0)",
-    paper_bgcolor="rgba(0, 0, 0, 0)",
-    font=dict(family=BODY_FONT_FAMILY),
-    hoverlabel=dict(font=dict(family=BODY_FONT_FAMILY, color=PLOTLY_FONT_COLOR)),
-    margin=dict(l=0, r=0, t=50, b=0),
-    legend=dict(
-        title="Account Type",
-        bordercolor=LEGEND_BORDER_COLOR,
-        borderwidth=1,
-        font=dict(family=BODY_FONT_FAMILY, color=PLOTLY_FONT_COLOR),
-    ),
-)
-
-
 # Create a Dash application
 _dash_renderer._set_react_version("18.2.0")
-app = dash.Dash(__name__)
+
+external_stylesheets = [
+    # dmc.styles.ALL,
+    dmc.styles.DATES,
+]
+app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 
 
 app.layout = dmc.MantineProvider(
@@ -125,34 +100,94 @@ app.layout = dmc.MantineProvider(
         html.Div(
             [
                 dmc.Title("Portfolio Dashboard", order=2),
-                dmc.Group([
-                dmc.Card(
-                    [   dmc.Title("Total Portfolio Value over Time", order=3),
-                        dcc.Graph(figure=fig_area, config=PLOTLY_CONFIG),
+                dmc.Group(
+                    [
+                        dmc.Card(
+                            [
+                                dmc.Title("Total Portfolio Value over Time", order=3),
+                                dcc.Graph(
+                                    figure=fig_area,
+                                    config=PLOTLY_CONFIG,
+                                    style={"height": "100%"},
+                                ),
+                            ],
+                            pt="md",
+                            pb="cs",
+                            shadow="sm",
+                            withBorder=True,
+                            w="65%",
+                            h="500px",
+                        ),
+                        dmc.Card(
+                            [
+                                dmc.Title("Portfolio Composition", order=3),
+                                dmc.DatePickerInput(
+                                    id="date-picker",
+                                    label="Select Date",
+                                    value=df_resampled["date"]
+                                    .max()
+                                    .strftime("%Y-%m-%d"),
+                                    minDate=df_resampled["date"]
+                                    .min()
+                                    .strftime("%Y-%m-%d"),
+                                    maxDate=df_resampled["date"]
+                                    .max()
+                                    .strftime("%Y-%m-%d"),
+                                ),
+                                dcc.Graph(
+                                    id="sunburst-plot",
+                                    config=PLOTLY_CONFIG,
+                                    style={"height": "100%"},
+                                ),
+                            ],
+                            p="md",
+                            shadow="sm",
+                            withBorder=True,
+                            w="30%",
+                            h="500px",
+                        ),
                     ],
-                    pt="md",
-                    pb="cs",
-                    shadow="sm",
-                    withBorder=True,
-                    w="60%",
+                    align="stretch",
                 ),
-                dmc.Card(
-                    [   dmc.Title("Portfolio composition", order=3),
-                        dcc.Graph(figure=fig_pie, config=PLOTLY_CONFIG),
-                    ],
-                    p="md",
-                    shadow="sm",
-                    withBorder=True,
-                    w="30%",
-                ),
-                ],
-                ),
-
             ],
             style={"padding": "1rem"},
         ),
     ],
 )
+
+@app.callback(
+    Output("sunburst-plot", "figure"),
+    Input("date-picker", "value"),
+)
+def update_sunburst(selected_date):
+    selected_date = pd.to_datetime(selected_date)
+    df_selected_date = df_resampled[df_resampled["date"] == selected_date].sort_values(['type', 'balance'])
+
+    fig_pie = px.sunburst(
+        df_selected_date,
+        path=["type", "account"],
+        values="balance",
+        template="plotly_white",
+        color_discrete_sequence=COLOR_PALETTE,
+    )
+
+    fig_pie.update_traces(textinfo="label+percent root")
+
+    fig_pie.update_layout(
+        plot_bgcolor="rgba(0, 0, 0, 0)",
+        paper_bgcolor="rgba(0, 0, 0, 0)",
+        font=dict(family=BODY_FONT_FAMILY),
+        hoverlabel=dict(font=dict(family=BODY_FONT_FAMILY, color=PLOTLY_FONT_COLOR)),
+        margin=dict(l=0, r=0, t=50, b=0),
+        legend=dict(
+            title="Account Type",
+            bordercolor=LEGEND_BORDER_COLOR,
+            borderwidth=1,
+            font=dict(family=BODY_FONT_FAMILY, color=PLOTLY_FONT_COLOR),
+        ),
+    )
+
+    return fig_pie
 
 if __name__ == "__main__":
     app.run_server(debug=True)
