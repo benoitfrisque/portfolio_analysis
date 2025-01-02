@@ -2,6 +2,8 @@
 
 This project provides a visual tool to analyze balances of multiple accounts, including bank accounts, investment accounts, and cryptocurrency wallets. The tool offers a dashboard for visualizing account balances over time and generating insights into financial data.
 
+![Dashboard Preview](dashboard_preview.png)
+
 ## Installation
 
 ### Setting Up the Environment
