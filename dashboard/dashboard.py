@@ -106,6 +106,7 @@ app.layout = dmc.MantineProvider(
                             [
                                 dmc.Title("Total Portfolio Value over Time", order=3),
                                 dcc.Graph(
+                                    id="area-plot",
                                     figure=fig_area,
                                     config=PLOTLY_CONFIG,
                                     style={"height": "100%"},
@@ -121,18 +122,12 @@ app.layout = dmc.MantineProvider(
                         dmc.Card(
                             [
                                 dmc.Title("Portfolio Composition", order=3),
-                                dmc.DatePickerInput(
-                                    id="date-picker",
-                                    label="Select Date",
-                                    value=df_resampled["date"]
-                                    .max()
-                                    .strftime("%Y-%m-%d"),
-                                    minDate=df_resampled["date"]
-                                    .min()
-                                    .strftime("%Y-%m-%d"),
-                                    maxDate=df_resampled["date"]
-                                    .max()
-                                    .strftime("%Y-%m-%d"),
+                                html.Div(
+                                    [
+                                        dmc.Text("Selected Date:", style={"marginRight": "10px"}),
+                                        dmc.Badge(id="selected-date", variant="outline", color="blue", size="lg"),
+                                    ],
+                                    style={"display": "flex", "alignItems": "center", "marginBottom": "10px"},
                                 ),
                                 dcc.Graph(
                                     id="sunburst-plot",
@@ -157,10 +152,15 @@ app.layout = dmc.MantineProvider(
 
 @app.callback(
     Output("sunburst-plot", "figure"),
-    Input("date-picker", "value"),
+    Output("selected-date", "children"),
+    Input("area-plot", "clickData"),
 )
-def update_sunburst(selected_date):
-    selected_date = pd.to_datetime(selected_date)
+def update_sunburst(clickData):
+    if clickData is None:
+        selected_date = df_resampled["date"].max()
+    else:
+        selected_date = pd.to_datetime(clickData["points"][0]["x"])
+
     df_selected_date = df_resampled[df_resampled["date"] == selected_date].sort_values(['type', 'balance'])
 
     fig_pie = px.sunburst(
@@ -187,7 +187,7 @@ def update_sunburst(selected_date):
         ),
     )
 
-    return fig_pie
+    return fig_pie, selected_date.strftime('%B %d, %Y')
 
 if __name__ == "__main__":
     app.run_server(debug=True)
