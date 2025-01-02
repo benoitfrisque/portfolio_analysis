@@ -1,0 +1,8 @@
+account,bank,type
+account1,BNP Paribas,checking
+account2,Keytrade Bank,checking
+account3,BNP Paribas,savings
+account4,Keytrade Bank,savings
+stocks1,Keytrade Bank,stocks
+stocks2,Degiro,stocks
+ctrypto5,NA,crypto
