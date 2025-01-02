@@ -7,8 +7,8 @@ import plotly.express as px
 
 BASEDIR = os.path.dirname(os.path.dirname(__file__))
 DATA_DIR = os.path.join(BASEDIR, "data", "raw")
-balance_file_path = os.path.join(DATA_DIR, "balance.csv")
-accounts_file_path = os.path.join(DATA_DIR, "accounts.csv")
+balance_file_path = os.path.join(DATA_DIR, "balance_sample.csv")
+accounts_file_path = os.path.join(DATA_DIR, "accounts_sample.csv")
 
 COLOR_PALETTE = ["#264653", "#2a9d8f", "#e9c46a", "#f4a261", "#e76f51"]
 BODY_FONT_FAMILY = "'Source Sans Pro', sans-serif"
@@ -110,6 +110,12 @@ fig_last_year.update_layout(
     margin=dict(l=0, r=0, t=50, b=0),
 )
 
+# Calculate the last value of the data by category and total
+last_date = df_resampled["date"].max()
+df_last = df_resampled[df_resampled["date"] == last_date]
+total_balance = df_last["balance"].sum()
+category_balances = df_last.groupby("type")["balance"].sum().reset_index()
+
 # Create a Dash application
 _dash_renderer._set_react_version("18.2.0")
 
@@ -142,23 +148,66 @@ app.layout = dmc.MantineProvider(
                     value="1Y",
                     size="sm",
                     w="200px",
-                    mb="sm"
+                    mb="sm",
                 ),
-                dmc.Card(
+                dmc.Group(
                     [
-                        dmc.Title("Total Balance", order=3),
-                        dcc.Graph(
-                            id="time-range-plot",
-                            config=PLOTLY_CONFIG,
-                            style={"height": "100%"},
+                        dmc.Card(
+                            [
+                                dmc.Title("Total Balance", order=3),
+                                dcc.Graph(
+                                    id="time-range-plot",
+                                    config=PLOTLY_CONFIG,
+                                    style={"height": "100%"},
+                                ),
+                            ],
+                            p="md",
+                            shadow="sm",
+                            withBorder=True,
+                            h="350px",
+                            w="800px",
+                        ),
+                        dmc.Grid(
+                            [
+                                dmc.GridCol(
+                                    dmc.Card(
+                                        [
+                                            dmc.Text("Total Balance"),
+                                            dmc.Text(
+                                                f"{total_balance:.2f}€", size="xl"
+                                            ),
+                                        ],
+                                        p="md",
+                                        shadow="sm",
+                                        withBorder=True,
+                                        w="200px",
+                                    ),
+                                    span=4,
+                                ),
+                                *[
+                                    dmc.GridCol(
+                                        dmc.Card(
+                                            [
+                                                dmc.Text(f"{row['type']} Balance"),
+                                                dmc.Text(
+                                                    f"{row['balance']:.2f}€", size="xl"
+                                                ),
+                                            ],
+                                            p="md",
+                                            shadow="sm",
+                                            withBorder=True,
+                                            w="200px",
+                                        ),
+                                        span=4,
+                                    )
+                                    for _, row in category_balances.iterrows()
+                                ],
+                            ],
+                            w="600px",
+                            gutter="sm",
                         ),
                     ],
-                    p="md",
-                    shadow="sm",
-                    withBorder=True,
-                    w="800px",
-                    h="350px",
-                    mb="1rem",
+                    mb="md",
                 ),
                 dmc.Group(
                     [
@@ -183,10 +232,22 @@ app.layout = dmc.MantineProvider(
                                 dmc.Title("Portfolio Composition", order=3),
                                 html.Div(
                                     [
-                                        dmc.Text("Selected Date:", style={"marginRight": "10px"}),
-                                        dmc.Badge(id="selected-date", variant="outline", color="blue", size="lg"),
+                                        dmc.Text(
+                                            "Selected Date:",
+                                            style={"marginRight": "10px"},
+                                        ),
+                                        dmc.Badge(
+                                            id="selected-date",
+                                            variant="outline",
+                                            color="blue",
+                                            size="lg",
+                                        ),
                                     ],
-                                    style={"display": "flex", "alignItems": "center", "marginBottom": "10px"},
+                                    style={
+                                        "display": "flex",
+                                        "alignItems": "center",
+                                        "marginBottom": "10px",
+                                    },
                                 ),
                                 dmc.Alert(
                                     id="negative-values-alert",
@@ -199,19 +260,17 @@ app.layout = dmc.MantineProvider(
                                     config=PLOTLY_CONFIG,
                                     style={"height": "300px"},
                                 ),
-
                             ],
                             p="md",
                             shadow="sm",
                             withBorder=True,
-                            w="30%",
+                            w="600px",
                             h="450px",
                             style={"paddingBottom": "1rem"},
                         ),
                     ],
                     align="stretch",
                 ),
-
             ],
             style={"padding": "1rem"},
         ),
