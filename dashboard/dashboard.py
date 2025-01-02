@@ -7,8 +7,8 @@ import plotly.express as px
 
 BASEDIR = os.path.dirname(os.path.dirname(__file__))
 DATA_DIR = os.path.join(BASEDIR, "data", "raw")
-balance_file_path = os.path.join(DATA_DIR, "balance_sample.csv")
-accounts_file_path = os.path.join(DATA_DIR, "accounts_sample.csv")
+balance_file_path = os.path.join(DATA_DIR, "balance.csv")
+accounts_file_path = os.path.join(DATA_DIR, "accounts.csv")
 
 COLOR_PALETTE = ["#264653", "#2a9d8f", "#e9c46a", "#f4a261", "#e76f51"]
 BODY_FONT_FAMILY = "'Source Sans Pro', sans-serif"
@@ -41,6 +41,9 @@ df_resampled = (
 # Merge the accounts data to get the account type
 df_resampled = df_resampled.merge(accounts, on="account")
 
+# Capitalize the account types
+df_resampled["type"] = df_resampled["type"].str.capitalize()
+
 # Stacked area plot
 COLOR_PALETTE = ["#264653", "#2a9d8f", "#e9c46a", "#f4a261", "#e76f51"]
 BODY_FONT_FAMILY = "'Source Sans Pro', sans-serif"
@@ -55,7 +58,7 @@ fig_area = px.area(
     y="balance",
     color="type",
     line_group="account",
-    category_orders={"type":  ['checking', 'savings', 'stocks', 'crypto']},
+    category_orders={"type":  ['Checking', 'Savings', 'Stocks', 'Crypto']},
     template="plotly_white",
     color_discrete_sequence=COLOR_PALETTE,
 )
@@ -68,7 +71,7 @@ fig_area.update_layout(
     paper_bgcolor="rgba(0, 0, 0, 0)",
     font_color=PLOTLY_FONT_COLOR,
     font=dict(family=BODY_FONT_FAMILY),
-    hoverlabel=dict(font=dict(family=BODY_FONT_FAMILY, color=PLOTLY_FONT_COLOR)),
+    hoverlabel=dict(font=dict(family=BODY_FONT_FAMILY)),
     margin=dict(l=0, r=0, t=50, b=0),
     legend=dict(
         title="Account Type",
@@ -78,6 +81,33 @@ fig_area.update_layout(
         xanchor="center", # Align center of the legend
         yanchor="bottom", # Align bottom of the legend
     ),
+)
+
+# Filter data to show only the last year
+one_year_ago = pd.Timestamp.now() - pd.DateOffset(years=1)
+df_last_year = df_resampled[df_resampled["date"] >= one_year_ago]
+
+df_last_year_total = df_last_year.groupby("date")["balance"].sum().reset_index()
+
+# Line plot for the last year total
+fig_last_year = px.line(
+    df_last_year_total,
+    x="date",
+    y="balance",
+    template="plotly_white",
+    color_discrete_sequence=COLOR_PALETTE,
+)
+
+fig_last_year.update_layout(
+    xaxis_title="Date",
+    yaxis_title="Total Balance (Last Year)",
+    yaxis_ticksuffix='€',
+    plot_bgcolor="rgba(0, 0, 0, 0)",
+    paper_bgcolor="rgba(0, 0, 0, 0)",
+    font_color=PLOTLY_FONT_COLOR,
+    font=dict(family=BODY_FONT_FAMILY),
+    hoverlabel=dict(font=dict(family=BODY_FONT_FAMILY)),
+    margin=dict(l=0, r=0, t=50, b=0),
 )
 
 # Create a Dash application
@@ -100,6 +130,23 @@ app.layout = dmc.MantineProvider(
         html.Div(
             [
                 dmc.Title("Portfolio Dashboard", order=2),
+                dmc.Card(
+                    [
+                        dmc.Title("Total Balance (Last Year)", order=3),
+                        dcc.Graph(
+                            id="last-year-plot",
+                            figure=fig_last_year,
+                            config=PLOTLY_CONFIG,
+                            style={"height": "100%"},
+                        ),
+                    ],
+                    p="md",
+                    shadow="sm",
+                    withBorder=True,
+                    w="95%",
+                    h="500px",
+                    style={"marginTop": "20px"},
+                ),
                 dmc.Group(
                     [
                         dmc.Card(
@@ -129,11 +176,18 @@ app.layout = dmc.MantineProvider(
                                     ],
                                     style={"display": "flex", "alignItems": "center", "marginBottom": "10px"},
                                 ),
+                                dmc.Alert(
+                                    id="negative-values-alert",
+                                    title="Warning, some accounts have negative values and are ignored here!",
+                                    color="yellow",
+                                    style={"display": "none"},
+                                ),
                                 dcc.Graph(
                                     id="sunburst-plot",
                                     config=PLOTLY_CONFIG,
-                                    style={"height": "100%"},
+                                    style={"height": "350px"},
                                 ),
+
                             ],
                             p="md",
                             shadow="sm",
@@ -144,6 +198,7 @@ app.layout = dmc.MantineProvider(
                     ],
                     align="stretch",
                 ),
+
             ],
             style={"padding": "1rem"},
         ),
@@ -153,15 +208,21 @@ app.layout = dmc.MantineProvider(
 @app.callback(
     Output("sunburst-plot", "figure"),
     Output("selected-date", "children"),
+    Output("negative-values-alert", "style"),
     Input("area-plot", "clickData"),
+    Input("last-year-plot", "clickData"),
 )
-def update_sunburst(clickData):
-    if clickData is None:
+def update_sunburst(clickData_area, clickData_last_year):
+    if clickData_area is None and clickData_last_year is None:
         selected_date = df_resampled["date"].max()
+    elif clickData_area is not None:
+        selected_date = pd.to_datetime(clickData_area["points"][0]["x"])
     else:
-        selected_date = pd.to_datetime(clickData["points"][0]["x"])
+        selected_date = pd.to_datetime(clickData_last_year["points"][0]["x"])
 
     df_selected_date = df_resampled[df_resampled["date"] == selected_date].sort_values(['type', 'balance'])
+    negative_values = df_selected_date[df_selected_date["balance"] < 0]
+    df_selected_date = df_selected_date[df_selected_date["balance"] > 0]  # Remove negative values
 
     fig_pie = px.sunburst(
         df_selected_date,
@@ -177,7 +238,7 @@ def update_sunburst(clickData):
         plot_bgcolor="rgba(0, 0, 0, 0)",
         paper_bgcolor="rgba(0, 0, 0, 0)",
         font=dict(family=BODY_FONT_FAMILY),
-        hoverlabel=dict(font=dict(family=BODY_FONT_FAMILY, color=PLOTLY_FONT_COLOR)),
+        hoverlabel=dict(font=dict(family=BODY_FONT_FAMILY)),
         margin=dict(l=0, r=0, t=50, b=0),
         legend=dict(
             title="Account Type",
@@ -187,7 +248,11 @@ def update_sunburst(clickData):
         ),
     )
 
-    return fig_pie, selected_date.strftime('%B %d, %Y')
+    alert_style = {"display": "none"}
+    if not negative_values.empty:
+        alert_style = {"display": "block"}
+
+    return fig_pie, selected_date.strftime('%B %d, %Y'), alert_style
 
 if __name__ == "__main__":
     app.run_server(debug=True)
