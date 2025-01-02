@@ -2,7 +2,7 @@ import pandas as pd
 import os
 import dash
 import dash_mantine_components as dmc
-from dash import html, dcc, _dash_renderer, Input, Output
+from dash import html, dcc, _dash_renderer, Input, Output, State
 import plotly.express as px
 
 BASEDIR = os.path.dirname(os.path.dirname(__file__))
@@ -130,12 +130,25 @@ app.layout = dmc.MantineProvider(
         html.Div(
             [
                 dmc.Title("Portfolio Dashboard", order=2),
+                dmc.Select(
+                    id="time-range-select",
+                    label="Select Time Range",
+                    data=[
+                        {"value": "YTD", "label": "Year-to-Date"},
+                        {"value": "1Y", "label": "Last 1 Year"},
+                        {"value": "2Y", "label": "Last 2 Years"},
+                        {"value": "5Y", "label": "Last 5 Years"},
+                    ],
+                    value="1Y",
+                    size="sm",
+                    w="200px",
+                    mb="sm"
+                ),
                 dmc.Card(
                     [
-                        dmc.Title("Total Balance (Last Year)", order=3),
+                        dmc.Title("Total Balance", order=3),
                         dcc.Graph(
-                            id="last-year-plot",
-                            figure=fig_last_year,
+                            id="time-range-plot",
                             config=PLOTLY_CONFIG,
                             style={"height": "100%"},
                         ),
@@ -143,18 +156,17 @@ app.layout = dmc.MantineProvider(
                     p="md",
                     shadow="sm",
                     withBorder=True,
-                    w="95%",
-                    h="500px",
-                    style={"marginTop": "20px"},
+                    w="800px",
+                    h="350px",
+                    mb="1rem",
                 ),
                 dmc.Group(
                     [
                         dmc.Card(
                             [
-                                dmc.Title("Total Portfolio Value over Time", order=3),
+                                dmc.Title("Portfolio Composition over Time", order=3),
                                 dcc.Graph(
                                     id="area-plot",
-                                    figure=fig_area,
                                     config=PLOTLY_CONFIG,
                                     style={"height": "100%"},
                                 ),
@@ -163,8 +175,8 @@ app.layout = dmc.MantineProvider(
                             pb="cs",
                             shadow="sm",
                             withBorder=True,
-                            w="65%",
-                            h="500px",
+                            w="800px",
+                            h="450px",
                         ),
                         dmc.Card(
                             [
@@ -185,7 +197,7 @@ app.layout = dmc.MantineProvider(
                                 dcc.Graph(
                                     id="sunburst-plot",
                                     config=PLOTLY_CONFIG,
-                                    style={"height": "350px"},
+                                    style={"height": "300px"},
                                 ),
 
                             ],
@@ -193,7 +205,8 @@ app.layout = dmc.MantineProvider(
                             shadow="sm",
                             withBorder=True,
                             w="30%",
-                            h="500px",
+                            h="450px",
+                            style={"paddingBottom": "1rem"},
                         ),
                     ],
                     align="stretch",
@@ -206,19 +219,93 @@ app.layout = dmc.MantineProvider(
 )
 
 @app.callback(
+    Output("time-range-plot", "figure"),
+    Output("area-plot", "figure"),
+    Input("time-range-select", "value"),
+)
+def update_time_range_plots(selected_range):
+    if selected_range == "YTD":
+        start_date = pd.Timestamp.now().replace(month=1, day=1)
+    elif selected_range == "1Y":
+        start_date = pd.Timestamp.now() - pd.DateOffset(years=1)
+    elif selected_range == "2Y":
+        start_date = pd.Timestamp.now() - pd.DateOffset(years=2)
+    elif selected_range == "5Y":
+        start_date = pd.Timestamp.now() - pd.DateOffset(years=5)
+    else:
+        start_date = df_resampled["date"].min()
+
+    df_filtered = df_resampled[df_resampled["date"] >= start_date]
+    df_filtered_total = df_filtered.groupby("date")["balance"].sum().reset_index()
+
+    fig_time_range = px.line(
+        df_filtered_total,
+        x="date",
+        y="balance",
+        template="plotly_white",
+        color_discrete_sequence=COLOR_PALETTE,
+    )
+
+    fig_time_range.update_layout(
+        xaxis_title="",
+        yaxis_title="Total Balance",
+        yaxis_ticksuffix='€',
+        plot_bgcolor="rgba(0, 0, 0, 0)",
+        paper_bgcolor="rgba(0, 0, 0, 0)",
+        font_color=PLOTLY_FONT_COLOR,
+        font=dict(family=BODY_FONT_FAMILY),
+        hoverlabel=dict(font=dict(family=BODY_FONT_FAMILY)),
+        margin=dict(l=0, r=0, t=50, b=0),
+    )
+
+    fig_area = px.area(
+        df_filtered,
+        x="date",
+        y="balance",
+        color="type",
+        line_group="account",
+        category_orders={"type":  ['Checking', 'Savings', 'Stocks', 'Crypto']},
+        template="plotly_white",
+        color_discrete_sequence=COLOR_PALETTE,
+    )
+
+    fig_area.update_layout(
+        xaxis_title="",
+        yaxis_title="Balance",
+        yaxis_ticksuffix='€',
+        plot_bgcolor="rgba(0, 0, 0, 0)",
+        paper_bgcolor="rgba(0, 0, 0, 0)",
+        font_color=PLOTLY_FONT_COLOR,
+        font=dict(family=BODY_FONT_FAMILY),
+        hoverlabel=dict(font=dict(family=BODY_FONT_FAMILY)),
+        margin=dict(l=0, r=0, t=50, b=0),
+        legend=dict(
+            title="Account Type",
+            orientation="h",  # Horizontal orientation
+            x=0.5,            # Center horizontally
+            y=1,            # Position above the plot area
+            xanchor="center", # Align center of the legend
+            yanchor="bottom", # Align bottom of the legend
+        ),
+    )
+
+    return fig_time_range, fig_area
+
+@app.callback(
     Output("sunburst-plot", "figure"),
     Output("selected-date", "children"),
     Output("negative-values-alert", "style"),
     Input("area-plot", "clickData"),
-    Input("last-year-plot", "clickData"),
+    Input("time-range-plot", "clickData"),
+    State("time-range-select", "value"),
 )
-def update_sunburst(clickData_area, clickData_last_year):
-    if clickData_area is None and clickData_last_year is None:
+def update_sunburst(clickData_area, clickData_time_range, selected_range):
+    if clickData_area is None and clickData_time_range is None:
         selected_date = df_resampled["date"].max()
     elif clickData_area is not None:
         selected_date = pd.to_datetime(clickData_area["points"][0]["x"])
     else:
-        selected_date = pd.to_datetime(clickData_last_year["points"][0]["x"])
+        selected_date = pd.to_datetime(clickData_time_range["points"][0]["x"])
 
     df_selected_date = df_resampled[df_resampled["date"] == selected_date].sort_values(['type', 'balance'])
     negative_values = df_selected_date[df_selected_date["balance"] < 0]
